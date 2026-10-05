@@ -109,14 +109,70 @@ function renderIngredients(){
 }
 function renderOrders(){$('#orders').innerHTML=customers.length?customers.map(c=>{let q=REC[c.recipe];return `<div class="order ${S.selected?.id===c.id?'active':''}"><span><b>${c.name}</b> • ${c.type}<br>${q.emoji} ${q.name} • ${fmt(q.price)}</span><button class="choose" data-choose="${c.id}">${S.selected?.id===c.id?'ĐANG LÀM':'CHỌN'}</button></div>`}).join(''):'<div style="font-size:8px;padding:6px 0">Không còn khách trong ca.</div>';$$('[data-choose]').forEach(b=>b.onclick=()=>select(+b.dataset.choose))}
 function renderSelected(){if(!S.selected){$('#selectedOrder').innerHTML='<div><b>Chưa chọn khách</b><br><small>Chạm khách phía trên để nhận đơn.</small></div><button class="paybig" id="payBig" disabled>💵 THU TIỀN</button>';return}let q=REC[S.selected.recipe];$('#selectedOrder').innerHTML=`<div><b>${q.emoji} ${S.selected.name} — ${q.name}</b><br><small>${q.need.map(k=>ING[k][0]).join(' + ')} • ${fmt(q.price)}</small></div><button class="paybig" id="payBig" ${S.product?'':'disabled'}>💵 THU TIỀN</button>`;$('#payBig').onclick=pay}
-function renderStation(){let b=$('#station');if(!S.chosen.length){b.innerHTML='Chọn khách<br>rồi lấy nguyên liệu';b.classList.remove('ready');return}b.classList.add('ready');b.classList.toggle('actionable',!!S.selected);b.innerHTML='<div class="tray">'+S.chosen.map(k=>`${ING[k][1]} ${ING[k][0]}`).join(' • ')+'</div>'}
+
+function requiredSteps(recipe){
+ const a=[{id:'select',name:'CHỌN'},{id:'base',name:'NỀN'},{id:'ice',name:'ĐÁ'},{id:'finish',name:'HOÀN TẤT'}];
+ if(recipe==='milktea')a.splice(2,0,{id:'mix',name:'SỮA'});
+ if(recipe==='lemontea')a.splice(2,0,{id:'mix',name:'CHANH'});
+ if(recipe==='orange')a.splice(2,0,{id:'mix',name:'CAM'});
+ if(recipe==='milkcoffee')a.splice(2,0,{id:'mix',name:'SỮA'});
+ return a;
+}
+function prepStart(){
+ if(!S.selected)return toast('👆 Chọn khách trước.');
+ if(S.busy)return toast('⏳ Đang pha...');
+ const q=REC[S.selected.recipe];
+ const ok=S.chosen.length===q.need.length && q.need.every((x,i)=>S.chosen[i]===x);
+ if(!ok)return toast('❌ Lấy đủ và đúng nguyên liệu trước.');
+ S.busy=true;S.prepStep=1;S.quality=100;
+ renderAll();toast('▶ Bắt đầu pha '+q.name);
+}
+function prepAction(){
+ if(!S.busy||!S.selected)return;
+ const steps=requiredSteps(S.selected.recipe);
+ const cur=steps[S.prepStep];
+ if(cur && cur.id==='base' && !S.up.grinder)S.quality=Math.max(0,S.quality-3);
+ S.prepStep++;
+ if(S.prepStep>=steps.length){
+   const recipe=S.selected.recipe;
+   S.busy=false;
+   S.product={...REC[recipe],quality:S.quality};
+   S.prepStep=0;
+   renderAll();
+   toast('✨ Món hoàn thành! Chất lượng '+S.quality+'%');
+ }else{
+   renderAll();
+   toast('✓ '+steps[S.prepStep].name);
+ }
+}
+function renderStation(){
+ let b=$('#station');
+ if(!S.selected){
+   b.innerHTML='Chọn khách<br>rồi lấy nguyên liệu';
+   b.classList.remove('ready','actionable');
+   return;
+ }
+ const q=REC[S.selected.recipe],steps=requiredSteps(S.selected.recipe);
+ b.classList.toggle('ready',!!S.product);
+ b.classList.toggle('actionable',!!S.selected);
+ if(S.product){
+   b.innerHTML='<div class="tray"><div style="font-size:24px">'+q.emoji+'</div><div><b>'+q.name+'</b><small>ĐÃ XONG • CHẤT LƯỢNG '+S.product.quality+'%</small></div></div><div class="quality '+(S.product.quality<75?'bad':'good')+'">'+(S.product.quality>=90?'⭐ MÓN ĐẸP':S.product.quality>=75?'👍 ỔN':'⚠️ CÓ THỂ TRỪ UY TÍN')+'</div>';
+   return;
+ }
+ const stepHtml=steps.map((x,i)=>'<span class="recipeStep '+(i<S.prepStep?'done ':'')+(i===S.prepStep&&S.busy?'current':'')+'">'+(i<S.prepStep?'✓ ':'')+x.name+'</span>').join('');
+ const chosen=S.chosen.map(k=>ING[k][0]).join(' • ')||'Chưa có nguyên liệu';
+ b.innerHTML='<div class="tray"><div>'+chosen+'</div><div><b>'+q.emoji+' '+q.name+'</b><small>'+(S.busy?'ĐANG PHA...':'ĐỦ NGUYÊN LIỆU')+'</small></div></div><div class="recipeSteps">'+stepHtml+'</div><div class="quality '+(S.quality<75?'bad':'good')+'">CHẤT LƯỢNG: '+S.quality+'%</div><div class="actionPanel">'+(!S.busy?'<button class="actionBtn" id="startPrep">▶ BẮT ĐẦU PHA</button>':'<button class="actionBtn" id="prepAction">⚒ '+(steps[S.prepStep]?.name||'HOÀN TẤT')+'</button>')+'</div>';
+ $('#startPrep')?.addEventListener('click',prepStart);
+ $('#prepAction')?.addEventListener('click',prepAction);
+}
+
 function fxText(text,x,y,cls='float'){const e=document.createElement('div');e.className=cls;e.textContent=text;e.style.left=Math.max(6,Math.min(innerWidth-90,x))+'px';e.style.top=Math.max(40,Math.min(innerHeight-60,y))+'px';$('#fx').appendChild(e);setTimeout(()=>e.remove(),900)}
 function fxCoin(amount){const r=$('#money').getBoundingClientRect(),e=document.createElement('div');e.className='coin';e.textContent='+'+fmt(amount);e.style.left=(r.left+4)+'px';e.style.top=(r.top+10)+'px';$('#fx').appendChild(e);setTimeout(()=>e.remove(),800)}
 function pulse(el,cls='flash'){el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls);setTimeout(()=>el.classList.remove(cls),450)}
 function select(id){let c=customers.find(x=>x.id===id);if(!c)return;S.selected=c;S.chosen=[];S.product=null;S.busy=false;S.prepStep=0;S.quality=100;$('#product').innerHTML='🥤';renderAll();const b=[...$$('.customer')].find(x=>+x.dataset.id===id);if(b){b.classList.add('sel');b.scrollIntoView({block:'nearest',behavior:'smooth'})}toast('🧾 Đã nhận đơn của '+c.name+'. Chạm nguyên liệu trên quầy.')}
 function add(k){if(!S.selected)return toast('👆 Chọn khách trước.');if(S.chosen.length>=(S.up.ice?7:5))return toast('Khu chế biến đã đầy.');if(inv[k]<=0)return toast('📦 Hết '+ING[k][0]+'! Vào Nhập hàng.');S.chosen.push(k);renderStation();renderIngredients();const b=document.querySelector(`[data-ing="${k}"]`);if(b){pulse(b);fxText(ING[k][0]+' +1',b.getBoundingClientRect().left,b.getBoundingClientRect().top)}toast('Đã lấy '+ING[k][0]+'.')}
-function process(){if(S.busy)return toast('⏳ Đang chế biến...');if(!S.selected)return toast('👆 Chọn khách trước.');let q=REC[S.selected.recipe],a=[...S.chosen].sort(),b=[...q.need].sort();if(a.length!==b.length||a.some((x,i)=>x!==b[i])){pulse($('#station'),'flash');return toast('❌ Sai công thức: '+q.need.map(k=>ING[k][0]).join(' + '))}const st=$('#station');const customerId=S.selected.id;S.busy=true;st.classList.add('chopping');$('#process').disabled=true;toast('🔪 Đang chế biến...');setTimeout(()=>{if(!S.selected||S.selected.id!==customerId){S.busy=false;$('#process').disabled=false;st.classList.remove('chopping');return}q.need.forEach(k=>inv[k]--);S.product=q;st.classList.remove('chopping');$('#product').innerHTML=q.emoji==='🥤'?sprite('s-cup'):q.emoji;$('#product').classList.remove('done');void $('#product').offsetWidth;$('#product').classList.add('done');renderIngredients();renderSelected();toast('✨ Món hoàn thành! Bấm THU TIỀN.');S.busy=false;$('#process').disabled=false},S.up.grinder?340:520)}
-function pay(){if(!S.selected)return toast('👆 Chưa chọn khách.');if(!S.product)return toast('🥤 Món chưa hoàn thành.');const c=S.selected,q=S.product;const el=[...$$('.customer')].find(x=>+x.dataset.id===c.id);if(el){el.classList.add('happy','leave');setTimeout(()=>{},350)}const pb=$('#payBig');pulse(pb);fxCoin(q.price);fxText('⭐ +uy tín',pb.getBoundingClientRect().left,pb.getBoundingClientRect().top);S.money+=q.price;S.revenue+=q.price;S.served++;S.combo++;S.bestCombo=Math.max(S.bestCombo,S.combo);S.rating=Math.min(5,S.rating+(S.product.quality>=90?.04:S.product.quality>=75?.02:-.03));customers=customers.filter(x=>x.id!==c.id);S.selected=null;S.chosen=[];S.product=null;S.busy=false;S.prepStep=0;S.quality=100;$('#product').innerHTML='🥤';renderSelected();renderOrders();renderIngredients();renderStation();update();saveGame();toast('💵 +'+fmt(q.price)+' • Khách đã thanh toán.');setTimeout(()=>{renderCustomers();if(!customers.length){S.hour+=1.25;if(S.hour>=21)endDay();else{loadGame();if(!customers.length)spawn();renderAll();toast('👥 Khách mới vừa tới quầy!')}}},320)}
+function process(){return S.busy?prepAction():prepStart()}
+function pay(){if(!S.selected)return toast('👆 Chưa chọn khách.');if(!S.product)return toast('🥤 Món chưa hoàn thành.');const c=S.selected,q=S.product;const el=[...$$('.customer')].find(x=>+x.dataset.id===c.id);if(el){el.classList.add('happy','leave');setTimeout(()=>{},350)}const pb=$('#payBig');pulse(pb);fxCoin(q.price);fxText('⭐ +uy tín',pb.getBoundingClientRect().left,pb.getBoundingClientRect().top);S.money+=q.price;S.revenue+=q.price;S.served++;S.combo++;S.bestCombo=Math.max(S.bestCombo,S.combo);const quality=S.product.quality??100;S.rating=Math.min(5,S.rating+(quality>=90?.04:quality>=75?.02:-.03));customers=customers.filter(x=>x.id!==c.id);S.selected=null;S.chosen=[];S.product=null;S.busy=false;S.prepStep=0;S.quality=100;$('#product').innerHTML='🥤';renderSelected();renderOrders();renderIngredients();renderStation();update();saveGame();toast('💵 +'+fmt(q.price)+' • Khách đã thanh toán.');setTimeout(()=>{renderCustomers();if(!customers.length){S.hour+=1.25;if(S.hour>=21)endDay();else{loadGame();if(!customers.length)spawn();renderAll();toast('👥 Khách mới vừa tới quầy!')}}},320)}
 function discard(){S.busy=false;S.chosen=[];S.product=null;S.combo=0;$('#product').innerHTML='🥤';S.rating=Math.max(1,S.rating-.05);renderAll();toast('Đã bỏ món. Uy tín giảm nhẹ.')}
 function reset(){S.busy=false;S.chosen=[];S.product=null;$('#product').innerHTML='🥤';renderAll();toast('Đã làm lại khu chế biến.')}
 function endDay(){let wage=S.up.helper?120000:0,elec=S.up.fridge?9000:15000+S.served*500,repay=S.loan?Math.min(S.loan,50000):0;S.money=Math.max(0,S.money-wage-elec-repay);S.cost+=wage+elec+repay;S.loan=Math.max(0,S.loan-repay);S.day++;S.hour=7.5;S.served=0;S.combo=0;spawn();renderAll();toast('🌙 Đã đóng quầy. Chào ngày '+S.day+'!')}
@@ -127,22 +183,30 @@ else if(S.tab==='market'){let pz={coffee:50000,milk:30000,tea:40000,sugar:15000,
 else if(S.tab==='upgrade'){let u=[['ice','🧊 Thùng đá lớn',150000,'Tăng sức chứa'],['grinder','⚙️ Máy xay',220000,'Pha chế nhanh'],['fridge','🧊 Tủ lạnh',300000,'Ổn định kho'],['sign','🏮 Bảng hiệu',180000,'Thêm khách'],['helper','🧑‍🍳 Phụ việc',400000,'Có nhân viên']];h='<h2>🔨 NÂNG CẤP</h2>';u.forEach(x=>h+=`<div class="row"><span>${x[1]}<br><small>${x[3]}</small></span><button class="buy" data-up="${x[0]}">${S.up[x[0]]?'ĐÃ MUA':fmt(x[2])}</button></div>`)}
 else if(S.tab==='finance')h=`<h2>🏦 TÀI CHÍNH</h2><div class="row"><span>Vốn</span><b>${fmt(S.money)}</b></div><div class="row"><span>Doanh thu</span><b>${fmt(S.revenue)}</b></div><div class="row"><span>Khoản vay</span><b>${fmt(S.loan)}</b></div><div class="row"><span>Vay 300.000đ</span><button class="buy" id="loan">${S.loan?'ĐANG VAY':'VAY NGAY'}</button></div>`;
 else h=`<h2>📱 ĐIỆN THOẠI</h2><div class="row"><span>📖 Công thức</span><button class="buy" id="recipes">MỞ SỔ</button></div><div class="row"><span>📢 Marketing</span><button class="buy" id="marketing">50.000đ</button></div><div class="row"><span>📜 Nhật ký</span><button class="buy" id="log">XEM</button></div><div class="row"><span>🌙 Kết thúc ngày</span><button class="buy" id="finish">ĐÓNG QUẦY</button></div><div class="row"><span>🗑️ Xoá dữ liệu</span><button class="buy" id="wipe">RESET</button></div><div class="tip">Điện thoại dùng cho quản lý; thao tác bán hàng vẫn diễn ra trực tiếp trên quầy.</div>`;
-p.innerHTML=h;$$('[data-buy]').forEach(b=>b.onclick=()=>buy(b.dataset.buy));$$('[data-up]').forEach(b=>b.onclick=()=>upgrade(b.dataset.up));if($('#loan'))$('#loan').onclick=()=>{if(S.loan)return toast('Bạn đang có khoản vay.');S.money+=300000;S.loan=345000;renderAll();toast('Đã vay 300.000đ, nghĩa vụ 345.000đ.')};if($('#marketing'))$('#marketing').onclick=()=>{if(S.money<50000)return toast('Không đủ tiền.');S.money-=50000;S.cost+=50000;S.marketing=true;toast('Marketing đã chạy. Ca tiếp theo sẽ đông khách hơn.');update()};if($('#finish'))$('#finish').onclick=endDay;if($('#wipe'))$('#wipe').onclick=()=>{localStorage.removeItem('khoi_nghiep_save_v16_fixed');location.reload()};if($('#recipes'))$('#recipes').onclick=recipes;if($('#log'))$('#log').onclick=()=>modal('📜 NHẬT KÝ',`<div class="log">Ngày ${S.day}: quầy đang hoạt động.<br>Đơn đã phục vụ: ${S.served}.<br>Doanh thu: ${fmt(S.revenue)}.<br>Chi phí: ${fmt(S.cost)}.<br>Uy tín: ${S.rating.toFixed(1)}.<br>Kỷ lục combo: ${S.bestCombo}.<br><br>Hệ thống gameplay: nhận đơn → lấy nguyên liệu → chế biến → thu tiền.</div>`)}
+p.innerHTML=h;$$('[data-buy]').forEach(b=>b.onclick=()=>buy(b.dataset.buy));$$('[data-up]').forEach(b=>b.onclick=()=>upgrade(b.dataset.up));if($('#loan'))$('#loan').onclick=()=>{if(S.loan)return toast('Bạn đang có khoản vay.');S.money+=300000;S.loan=345000;renderAll();toast('Đã vay 300.000đ, nghĩa vụ 345.000đ.')};if($('#marketing'))$('#marketing').onclick=()=>{if(S.money<50000)return toast('Không đủ tiền.');S.money-=50000;S.cost+=50000;S.marketing=true;toast('Marketing đã chạy. Ca tiếp theo sẽ đông khách hơn.');update()};if($('#finish'))$('#finish').onclick=endDay;if($('#wipe'))$('#wipe').onclick=()=>{localStorage.removeItem('khoi_nghiep_save_final');location.reload()};if($('#recipes'))$('#recipes').onclick=recipes;if($('#log'))$('#log').onclick=()=>modal('📜 NHẬT KÝ',`<div class="log">Ngày ${S.day}: quầy đang hoạt động.<br>Đơn đã phục vụ: ${S.served}.<br>Doanh thu: ${fmt(S.revenue)}.<br>Chi phí: ${fmt(S.cost)}.<br>Uy tín: ${S.rating.toFixed(1)}.<br>Kỷ lục combo: ${S.bestCombo}.<br><br>Hệ thống gameplay: nhận đơn → lấy nguyên liệu → chế biến → thu tiền.</div>`)}
 function buy(k){let p={coffee:50000,milk:30000,tea:40000,sugar:15000,ice:10000,orange:25000,lemon:18000,pearls:22000}[k];if(S.money<p)return toast('Không đủ vốn.');S.money-=p;S.cost+=p;inv[k]+=5;renderAll();toast('Đã nhập '+ING[k][0]+' ×5.')}
 function upgrade(id){if(S.up[id])return;let p={ice:150000,grinder:220000,fridge:300000,sign:180000,helper:400000}[id];if(S.money<p)return toast('Chưa đủ tiền.');S.money-=p;S.cost+=p;S.up[id]=true;spawn();renderAll();saveGame();toast('Nâng cấp thành công!')}
 function modal(title,body){$('#modalTitle').textContent=title;$('#modalBody').innerHTML=body;$('#modal').classList.add('open')}
 function recipes(){let body='<div class="recipes">'+Object.values(REC).map(q=>`<div class="recipe">${q.emoji} ${q.name}<br><small>${q.need.map(k=>ING[k][0]).join(' + ')} • ${fmt(q.price)}</small></div>`).join('')+'</div>';modal('📖 SỔ CÔNG THỨC',body)}
 function customerTick(){if(!customers.length)return;customers.forEach(c=>{c.wait=Math.max(0,c.wait-(c.type==='Khách vội'?5:3));if(c.wait===0){const el=[...$$('.customer')].find(x=>+x.dataset.id===c.id);if(el){el.classList.add('angry','leave');}if(S.selected&&S.selected.id===c.id){S.selected=null;S.chosen=[];S.product=null;$('#product').innerHTML='🥤';}S.rating=Math.max(1,S.rating-.08);S.combo=0;toast('😡 '+c.name+' bỏ đi vì chờ quá lâu. COMBO bị mất.');customers=customers.filter(x=>x.id!==c.id);setTimeout(renderAll,300)}});renderCustomers();}
 
-function saveGame(){try{localStorage.setItem('khoi_nghiep_save_v16_fixed',JSON.stringify({S,inv,customers,seq}))}catch(e){}}
-function loadGame(){try{let raw=localStorage.getItem('khoi_nghiep_save_v16_fixed');if(!raw)return;let d=JSON.parse(raw);if(d&&d.S){S=Object.assign(S,d.S);inv=Object.assign(inv,d.inv||{});customers=Array.isArray(d.customers)?d.customers:[];seq=d.seq||1}}catch(e){}}
+function saveGame(){try{localStorage.setItem('khoi_nghiep_save_final',JSON.stringify({S,inv,customers,seq}))}catch(e){}}
+function loadGame(){try{let raw=localStorage.getItem('khoi_nghiep_save_final');if(!raw)return;let d=JSON.parse(raw);if(d&&d.S){S=Object.assign(S,d.S);inv=Object.assign(inv,d.inv||{});customers=Array.isArray(d.customers)?d.customers:[];seq=d.seq||1}}catch(e){}}
 setInterval(saveGame,3000);
 setInterval(customerTick,1800);
 function renderFlow(){const steps=[...$$('#flow .step')];let n=!S.selected?0:(S.product?4:(S.chosen.length?2:1));steps.forEach((x,i)=>x.classList.toggle('on',i===n-1));}
 function renderUpgrades(){const c=$('#counter');if(!c)return;['ice','grinder','fridge','sign','helper'].forEach(k=>c.classList.toggle('up-'+k,!!S.up[k]));}
 function renderCombo(){let el=$('#combo');if(el)el.textContent=S.combo;let old=$('.comboBadge');if(S.combo>=2){if(!old){old=document.createElement('div');old.className='comboBadge';document.body.appendChild(old)}old.textContent='🔥 COMBO x'+S.combo+'  •  Kỷ lục '+S.bestCombo}else if(old)old.remove();}
 function renderAll(){update();renderCustomers();renderOrders();renderIngredients();renderStation();renderSelected();panel();renderFlow();renderUpgrades();renderCombo()}
-$('#process').onclick=prepStart;$('#station').onclick=()=>{if(S.chosen.length)process()};$('#product').onclick=()=>{if(S.product)pay()};$('#pay').onclick=pay;$('#discard').onclick=discard;$('#reset').onclick=reset;$('#close').onclick=()=>$('#modal').classList.remove('open');$('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('open')};$$('.nav button').forEach(b=>b.onclick=()=>{$$('.nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.tab=b.dataset.tab;panel()});spawn();renderAll();
+$('#process').onclick=prepStart;$('#station').onclick=()=>{if(S.busy)prepAction();else if(S.chosen.length)prepStart()};$('#product').onclick=()=>{if(S.product)pay()};$('#pay').onclick=pay;$('#discard').onclick=discard;$('#reset').onclick=reset;$('#close').onclick=()=>$('#modal').classList.remove('open');$('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('open')};$$('.nav button').forEach(b=>b.onclick=()=>{$$('.nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');S.tab=b.dataset.tab;panel()});spawn();renderAll();
 })();
+</script>
+
+<script>
+window.addEventListener('error',function(e){
+ var box=document.getElementById('jsError');
+ if(!box){box=document.createElement('div');box.id='jsError';box.style='position:fixed;inset:0;background:#fff;color:#b00020;padding:24px;font:14px monospace;z-index:99999;white-space:pre-wrap';document.body.appendChild(box);}
+ box.textContent='GAME ERROR\\n'+(e.error&&e.error.message||e.message||'Unknown error');
+});
 </script>
 </body></html>
